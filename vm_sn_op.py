@@ -1,15 +1,19 @@
 #!/usr/bin/env python
+######################################################################################################################################
 #
-# Inspired from pyvmomi community samples
+#
+#Python Script for VM snapshot operation. Before snapshot is taken the script enforces certain necessary condition to be met. 
+#Author : Chandan Hegde ( hegdec@vmware.com)
 #
 #
+######################################################################################################################################
 from __future__ import print_function
 
 from pyVmomi import vim
 from pyVmomi import vmodl
 import argparse
 import getpass
-from pyVim.connect import SmartConnectNoSSL, Disconnect
+from pyvim.connect import SmartConnectNoSSL, Disconnect
 import atexit
 import sys
 
@@ -84,6 +88,7 @@ def get_args():
                    (args.host, args.user))
     return args
 
+
 def wait_for_tasks(service_instance, tasks):
     """Given the service instance si and tasks, it returns after all the
    tasks are complete
@@ -150,6 +155,47 @@ def get_obj(content, vimtype, name):
     return obj
 
 
+def check_condition(si, vm):
+    # Now before taking snapshot let us make sure certain coonditions are met. Namely
+    #         condition#1 : The Datastores which backs the VM should have at least 10% of free space.
+    #         condition#2 : The Datastore's should have free space at least double the size of VMDK
+    #         condition#3 : The write rate to the disk should be below the threshold. ( It's been expected to use the vROPs API over here down the line). As of now this condition is not taken into account.
+
+    condition_met = True
+
+    devices = vm.config.hardware.device
+    vmdks = []
+    for dev in devices:
+        if isinstance(dev, vim.vm.device.VirtualDisk):
+            vmdks.append(dev)
+
+    for vmdk in vmdks:
+
+        #Datastore backing VMDK
+        ds = vmdk.backing.datastore
+        ds_capacityGB = ds.summary.capacity / (1024 ** 3 )
+        ds_freeGB = ds.summary.freeSpace/ (1024 ** 3 )
+        ds_free_percent = ( ds_freeGB * 100 ) / ds_capacityGB
+
+        diskSizeGB = (vmdk.capacityInKB) / (1024 ** 2)
+
+        #Start checking the condition
+        if ds_free_percent < 10:
+            #set the condition flag
+            condition_met = False
+            print("###The Datastore {} free space is less than 10% => Violation of condition to take Snapshot.".format(ds.summary.name))
+            break
+        elif ds_freeGB < ( diskSizeGB * 2 ):
+            #set the condition flag
+            condition_met = False
+            print("###The Datastore {} free space is less than twice the disk size => Violation of condition to take Snapshot.".format(ds.summary.name))
+            break
+        else:
+            pass
+
+    return condition_met
+
+
 def create_snapshot(si, vm_obj, sn_name, description, sn_memory, sn_quiesce):
 
     """ Creates Snapshot given the VM object and Snapshot name and necessary description"""
@@ -168,17 +214,23 @@ def create_snapshot(si, vm_obj, sn_name, description, sn_memory, sn_quiesce):
     else:
         sn_quiesce = False
 
-    task = vm_obj.CreateSnapshot_Task(name=sn_name,
+    #Test the condition to be met before taking the snapshot.
+    test_condition = check_condition(si, vm_obj)
+
+    if test_condition:
+        task = vm_obj.CreateSnapshot_Task(name=sn_name,
                                       description=desc,
                                       memory=sn_memory,
                                       quiesce=sn_quiesce)
-    print("Creating Snapshot {} on VM {}".format(sn_name, vm_obj.name))
-    wait_for_tasks(si, [task])
+        print("Creating Snapshot {} on VM {}".format(sn_name, vm_obj.name))
+        wait_for_tasks(si, [task])
 
-    if sn_memory:
-        print("Snapshot {} is taken on VM {} with memory".format(sn_name, vm_obj.name))
+        if sn_memory:
+            print("Snapshot {} is taken on VM {} with memory".format(sn_name, vm_obj.name))
+        else:
+            print("Snapshot {} is taken on VM {} with no in-memory".format(sn_name, vm_obj.name))
     else:
-        print("Snapshot {} is taken on VM {} with no in-memory".format(sn_name, vm_obj.name))
+        print("###Snapshot is not taken due to the violation of the condition.")
 
 
 def view_all_snapshot(vm):
