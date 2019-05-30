@@ -3,7 +3,7 @@
 #
 #
 #Python Script for VM snapshot operation. Before snapshot is taken the script enforces certain necessary condition to be met. 
-#Author : Chandan Hegde ( hegdec@vmware.com)
+#Author : Chandan Hegde
 #
 #
 ######################################################################################################################################
