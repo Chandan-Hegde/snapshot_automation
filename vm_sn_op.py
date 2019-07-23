@@ -338,8 +338,6 @@ def create_filter_spec(pc, vms, props):
     propSet.type = vim.VirtualMachine
     for  prop in props:
         (propSet.pathSet).append(prop)
-    print(type(propSet.pathSet))
-    print(type(prop))
     filterSpec.propSet = [propSet]
     return filterSpec
 
