@@ -9,13 +9,13 @@
 ######################################################################################################################################
 from __future__ import print_function
 
-from pyVmomi import vim
-from pyVmomi import vmodl
+from pyVmomi import vim, vmodl
 import argparse
 import getpass
-from pyvim.connect import SmartConnectNoSSL, Disconnect
+from pyVim.connect import SmartConnectNoSSL, Disconnect
 import atexit
 import sys
+import pdb #debugging module
 
 
 def get_args():
@@ -136,23 +136,14 @@ def wait_for_tasks(service_instance, tasks):
             pcfilter.Destroy()
 
 
-def get_obj(content, vimtype, name):
-
+def get_obj(ServiceInstance, root, vim_type):
     """Create container view and search for object in it"""
-    obj = None
-    container = content.viewManager.CreateContainerView(
-        content.rootFolder, vimtype, True)
-    for c in container.view:
-        if name:
-            if c.name == name:
-                obj = c
-                break
-        else:
-            obj = c
-            break
-
+    
+    container = ServiceInstance.content.viewManager.CreateContainerView(root, vim_type,
+                                                                        True)
+    view = container.view
     container.Destroy()
-    return obj
+    return view
 
 
 def check_condition(si, vm):
@@ -216,7 +207,7 @@ def create_snapshot(si, vm_obj, sn_name, description, sn_memory, sn_quiesce):
 
     #Test the condition to be met before taking the snapshot.
     test_condition = check_condition(si, vm_obj)
-
+    
     if test_condition:
         task = vm_obj.CreateSnapshot_Task(name=sn_name,
                                       description=desc,
@@ -334,6 +325,45 @@ def revert_snapshot(si, vm, snapshot_name):
         print("No snapshots found with name: %s on VM: %s" % (snapshot_name, vm.name))
 
 
+def create_filter_spec(pc, vms, props):
+    """Creates the filter specification"""
+
+    objSpecs = []
+    for vm in vms:
+        objSpec = vmodl.query.PropertyCollector.ObjectSpec(obj=vm)
+        objSpecs.append(objSpec)
+    filterSpec = vmodl.query.PropertyCollector.FilterSpec()
+    filterSpec.objectSet = objSpecs
+    propSet = vmodl.query.PropertyCollector.PropertySpec(all=False)
+    propSet.type = vim.VirtualMachine
+    for  prop in props:
+        (propSet.pathSet).append(prop)
+    print(type(propSet.pathSet))
+    print(type(prop))
+    filterSpec.propSet = [propSet]
+    return filterSpec
+
+
+def filter_results(result, value):
+    """Filter the result for the value"""
+
+    for vm in result:
+        if value in vm.propSet[0].val.name:
+            return vm.obj
+    return None
+
+
+def Filter_VM(ServiceInstance, vms, filter_propertys, filter_value):
+    """ Fileter the VM with it's name"""
+
+    pc = ServiceInstance.content.propertyCollector
+    filter_spec = create_filter_spec(pc, vms, filter_propertys)
+    options = vmodl.query.PropertyCollector.RetrieveOptions()
+    result = pc.RetrieveProperties([filter_spec])
+    vm_obj = filter_results(result, filter_value)
+    return vm_obj
+
+
 def main():
 
     args = get_args()
@@ -350,12 +380,16 @@ def main():
         atexit.register(Disconnect, si)
 
     except IOError as e:
-        pass
+        print(e)
 
     if not si:
         raise SystemExit("Unable to connect to host with supplied info.")
 
-    vm_obj = get_obj(si.content, [vim.VirtualMachine], args.vmname)
+    vms = get_obj(si, si.content.rootFolder, [vim.VirtualMachine]) 
+
+    filter_propertys = ["name","config"]
+    filter_value = args.vmname
+    vm_obj = Filter_VM(si, vms, filter_propertys, filter_value)
 
     if vm_obj is None:
         raise SystemExit("Unable to locate VirtualMachine.")
