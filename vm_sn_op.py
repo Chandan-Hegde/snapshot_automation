@@ -72,8 +72,8 @@ def get_args():
     parser.add_argument('-action', required=True,
                         choices=("create", "delete", "list_all", "list_current", "delete", "revert","delete_all"))
 
-    parser.add_argument('-snapshotname', required=False,
-                        help="Snapshot Name to which you want to revert or delete the one")
+    # parser.add_argument('-snapshotname', required=False,
+    #                     help="Snapshot Name to which you want to revert or delete the one")
 
     parser.add_argument('-child_snapshot_delete', required=False,
                         help="To decide if the child snapshot to be deleted while you delete the parent Snapshot",
@@ -346,7 +346,7 @@ def filter_results(result, value):
     """Filter the result for the value"""
 
     for vm in result:
-        if value in vm.propSet[0].val.name:
+        if value in vm.propSet[0].val:
             return vm.obj
     return None
 
@@ -385,7 +385,7 @@ def main():
 
     vms = get_obj(si, si.content.rootFolder, [vim.VirtualMachine]) 
 
-    filter_propertys = ["name","config"]
+    filter_propertys = ["name"]
     filter_value = args.vmname
     vm_obj = Filter_VM(si, vms, filter_propertys, filter_value)
 
@@ -405,16 +405,16 @@ def main():
         view_current_snapshot(vm_obj)
 
     elif args.action == "delete":
-        if args.snapshotname is None:
+        if args.name is None:
             print("Please specify the snapshot name that you want to delete with parameter -snapshotname")
             exit(1)
-        delete_snapshot(si, vm_obj, args.snapshotname, args.child_snapshot_delete)
+        delete_snapshot(si, vm_obj, args.name, args.child_snapshot_delete)
 
     elif args.action == "revert":
-        if args.snapshotname is None:
+        if args.name is None:
             print("Please specify the snapshot name that you want to revert to with parameter -snapshotname")
             exit(1)
-        revert_snapshot(si, vm_obj, args.snapshotname)
+        revert_snapshot(si, vm_obj, args.name)
 
     elif args.action == "delete_all":
         print("Removing all snapshots for virtual machine %s" % vm_obj.name)
